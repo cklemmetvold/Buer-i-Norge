@@ -149,6 +149,27 @@ footer a{color:var(--vann);}
 #omsiden .omlukk{position:absolute;top:10px;right:14px;background:none;border:none;font-size:28px;cursor:pointer;color:var(--gran,#1E3A2F);line-height:1;}
 #omsiden .omfjernknapp{padding:10px 14px;border-radius:8px;border:2px solid var(--falu,#9E3B2F);background:var(--falu,#9E3B2F);color:#FDFDFB;font:inherit;font-size:14px;font-weight:600;cursor:pointer;}
 #omsiden .ommono{font-family:'IBM Plex Mono',monospace;font-size:12px;opacity:.85;}
+
+#detalj{display:none;position:fixed;inset:0;background:rgba(30,58,47,.65);z-index:4200;align-items:flex-start;justify-content:center;padding:24px;overflow:auto;}
+#detalj .dboks{background:var(--papir);color:var(--gran);max-width:760px;width:100%;border:3px solid var(--gran);border-radius:12px;margin:auto;position:relative;box-shadow:0 18px 40px rgba(30,58,47,.35);overflow:hidden;}
+#detalj .dbilde{position:relative;background:var(--myr);height:min(48vh,420px);}
+#detalj .dbilde img{width:100%;height:100%;object-fit:cover;display:block;}
+#detalj .dbilde .plassholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:repeating-linear-gradient(45deg,var(--myr),var(--myr) 12px,#e6edda 12px,#e6edda 24px);}
+#detalj .dbilde .plassholder svg{width:84px;height:84px;opacity:.85;}
+#detalj .dpil{position:absolute;top:50%;transform:translateY(-50%);background:rgba(253,253,251,.92);border:1.5px solid var(--gran);border-radius:50%;width:40px;height:40px;font-size:20px;cursor:pointer;line-height:1;color:var(--gran);}
+#detalj .dpil.venstre{left:10px;}
+#detalj .dpil.hoyre{right:10px;}
+#detalj .dteller{position:absolute;bottom:10px;right:12px;background:rgba(30,58,47,.75);color:var(--papir,#F2F4EC);font-family:'IBM Plex Mono',monospace;font-size:12px;padding:3px 9px;border-radius:99px;}
+#detalj .dinnhold{padding:18px 22px 22px;display:flex;flex-direction:column;gap:10px;}
+#detalj h2{font-family:'Fraunces',serif;font-size:28px;line-height:1.15;}
+#detalj .dinnhold p{font-size:14.5px;line-height:1.6;}
+#detalj .dlukk{position:absolute;top:8px;right:12px;background:rgba(253,253,251,.92);border:1.5px solid var(--gran);border-radius:50%;width:36px;height:36px;font-size:22px;cursor:pointer;z-index:2;line-height:1;color:var(--gran);}
+.kort .bilde, .kort h2{cursor:pointer;}
+.kort h2:hover{text-decoration:underline;}
+@media(max-width:759.98px){
+  #detalj{padding:0;}
+  #detalj .dboks{border-radius:0;border-left:none;border-right:none;min-height:100dvh;}
+}
 </style>
 </head>
 <body class="vis-kart">
@@ -257,7 +278,7 @@ BUER.forEach(b => {
   m.bindPopup(`<div class="popup-navn">${b.navn}</div>
     <div style="font-size:12px">${b.omrade} · ${b.kommune}</div>
     <div style="font-size:12px;margin:3px 0">${b.pris_tekst||''}${b.noekkel ? ' · 🔑 '+b.noekkel : ''}${b.koord==='omtrentlig' ? ' · <i>omtrentlig posisjon</i>':''}</div>
-    <span class="popup-lenke" onclick="hoppTilKort('${b.id}')">Vis detaljer ↓</span>`);
+    <span class="popup-lenke" onclick="visDetalj('${b.id}')">Vis detaljer</span>`);
   markorer[b.id] = m;
 });
 
@@ -281,9 +302,9 @@ function kort(b){
   const gmaps = `https://www.google.com/maps?q=${b.lat},${b.lng}`;
   const norgeskart = `https://www.norgeskart.no/#!?project=norgeskart&layers=1002&zoom=13&lat=${b.lat}&lon=${b.lng}&markerLat=${b.lat}&markerLon=${b.lng}`;
   return `<article class="kort" id="kort-${b.id}" data-id="${b.id}">
-    <div class="bilde">${bilde}</div>
+    <div class="bilde" onclick="visDetalj('${b.id}')">${bilde}</div>
     <div class="innhold">
-      <h2>${b.navn}</h2>
+      <h2 onclick="visDetalj('${b.id}')">${b.navn}</h2>
       <div class="sted">${b.omrade} · ${b.kommune}, ${b.fylke}</div>
       <div class="chips">
         <span class="dchip typechip">${TYPENAVN[b.type]||b.type}</span>
@@ -486,6 +507,98 @@ window.hoppTilKort = function(id){
   setTimeout(()=>el.classList.remove('aktiv'), 2500);
 };
 
+// ---- Detaljvisning (modal m/karusell og #bu/-hash) ----
+let detaljBilder = [], detaljIdx = 0;
+function detaljEl(){
+  let m = document.getElementById('detalj');
+  if (!m){
+    m = document.createElement('div');
+    m.id = 'detalj';
+    document.body.appendChild(m);
+    m.addEventListener('click', ev => { if (ev.target === m) lukkDetalj(); });
+  }
+  return m;
+}
+function visBildeIdx(i){
+  const n = detaljBilder.length;
+  if (!n) return;
+  detaljIdx = ((i % n) + n) % n;
+  const img = document.querySelector('#detalj .dbilde img');
+  const tel = document.querySelector('#detalj .dteller');
+  if (img) img.src = detaljBilder[detaljIdx];
+  if (tel) tel.textContent = `${detaljIdx+1}/${n}`;
+}
+window.visDetalj = function(id, fraHash){
+  const b = BUER.find(x => x.id === id);
+  if (!b) return;
+  detaljBilder = [...new Set([b.bilde, ...(b.bilder||[])].filter(Boolean))];
+  detaljIdx = 0;
+  const flere = detaljBilder.length > 1;
+  const gmaps = `https://www.google.com/maps?q=${b.lat},${b.lng}`;
+  const norgeskart = `https://www.norgeskart.no/#!?project=norgeskart&layers=1002&zoom=13&lat=${b.lat}&lon=${b.lng}&markerLat=${b.lat}&markerLon=${b.lng}`;
+  const m = detaljEl();
+  m.innerHTML = `<div class="dboks" role="dialog" aria-labelledby="dtittel">
+    <button type="button" class="dlukk" aria-label="Lukk" onclick="lukkDetalj()">&times;</button>
+    <div class="dbilde">
+      ${detaljBilder.length
+        ? `<img src="${detaljBilder[0]}" alt="${b.navn}" referrerpolicy="no-referrer" onerror="this.style.display='none';this.parentElement.querySelector('.plassholder').style.display='flex'">
+           <div class="plassholder" style="display:none">${plassholderSvg(b.type)}</div>`
+        : `<div class="plassholder">${plassholderSvg(b.type)}</div>`}
+      ${flere ? `<button type="button" class="dpil venstre" aria-label="Forrige bilde" onclick="visBildeIdx(detaljIdx-1)">‹</button>
+                 <button type="button" class="dpil hoyre" aria-label="Neste bilde" onclick="visBildeIdx(detaljIdx+1)">›</button>
+                 <span class="dteller">1/${detaljBilder.length}</span>` : ''}
+    </div>
+    <div class="dinnhold">
+      <h2 id="dtittel">${b.navn}</h2>
+      <div class="sted">${b.omrade ? b.omrade+' · ' : ''}${b.kommune}, ${b.fylke}</div>
+      <div class="chips">
+        <span class="dchip typechip">${TYPENAVN[b.type]||b.type}</span>
+        ${b.senger_tekst ? `<span class="dchip">🛏 ${b.senger_tekst}</span>` : ''}
+        ${prisChip(b)}
+        ${b.noekkel ? `<span class="dchip">🔑 ${b.noekkel}</span>` : ''}
+        ${b.booking ? `<span class="dchip">📅 ${b.booking}</span>` : ''}
+      </div>
+      <p>${b.beskrivelse||''}</p>
+      ${b.tilstand ? `<div class="felt"><b>Standard:</b> ${b.tilstand}</div>` : ''}
+      ${b.betaling ? `<div class="vipps"><b>Betaling:</b> ${b.betaling}</div>` : ''}
+      ${b.vilkar ? `<div class="felt"><b>Vilkår:</b> ${b.vilkar}</div>` : ''}
+      ${b.kontakt ? `<div class="felt"><b>Kontakt:</b> ${b.kontakt}</div>` : ''}
+      ${b.koord==='omtrentlig' ? `<div class="omtrentligvarsel">📍 OMTRENTLIG POSISJON<br><span>Plassert etter kildens kart/stedsbeskrivelse – ikke innmålt. Sjekk kilden og kontakt eier før tur.</span></div>` : ''}
+      ${b.koord!=='eksakt' && b.koord!=='omtrentlig' ? `<div class="ingenkoord">📍 INGEN EKSAKTE KOORDINATER I KILDEN<br><span>Vises ikke i kartet. Bruk stedsbeskrivelsen og kilden for å finne fram.</span></div>` : ''}
+      ${b.lat != null ? `<div class="knapper">
+        <button class="vis" onclick="lukkDetalj();visIKart('${b.id}')">Vis i kart</button>
+        <button class="vis" onclick="lukkDetalj();hoppTilKort('${b.id}')">Vis i lista</button>
+        <button class="vis" onclick="eksterntKart('${norgeskart}')">Norgeskart</button>
+        <button class="vis" onclick="eksterntKart('${gmaps}')">Google Maps</button>
+      </div>` : ''}
+      <div class="fot">
+        ${(b.kilder && b.kilder.length) ? 'Kilder: '+b.kilder.map(k => `<a href="${k.url}" target="_blank" rel="noopener">${k.navn} ↗</a>`).join(' · ') : `<a href="${b.kilde}" target="_blank" rel="noopener">Kilde: ${b.kilde_navn} ↗</a>`}
+        <a href="#" class="feilrapport" onclick="rapporterFeil(event,'${b.id}','${b.navn.replace(/'/g,"\\'")}')">Meld feil ✉</a>
+        <a href="#" class="feilrapport" onclick="beOmFjerning(event,'${b.id}','${b.navn.replace(/'/g,"\\'")}')">Be om fjerning</a>
+        <span class="dato">skrapt ${b.skrapedato}</span>
+      </div>
+    </div>
+  </div>`;
+  m.style.display = 'flex';
+  if (!fraHash && location.hash !== '#bu/'+id) location.hash = 'bu/'+id;
+};
+window.lukkDetalj = function(){
+  const m = document.getElementById('detalj');
+  if (m) m.style.display = 'none';
+  if (location.hash.startsWith('#bu/')) history.replaceState(null, '', location.pathname + location.search);
+};
+window.addEventListener('hashchange', () => {
+  if (location.hash.startsWith('#bu/')) visDetalj(decodeURIComponent(location.hash.slice(4)), true);
+  else { const m = document.getElementById('detalj'); if (m) m.style.display = 'none'; }
+});
+document.addEventListener('keydown', e => {
+  const m = document.getElementById('detalj');
+  if (!m || m.style.display !== 'flex') return;
+  if (e.key === 'Escape') lukkDetalj();
+  else if (e.key === 'ArrowLeft') visBildeIdx(detaljIdx-1);
+  else if (e.key === 'ArrowRight') visBildeIdx(detaljIdx+1);
+});
+
 // ---- Buvett-boks (kollapsbar) ----
 window.toggleVett = function(){
   const v = document.getElementById('vettboks');
@@ -546,6 +659,7 @@ const antOmtr = BUER.filter(b => b.koord === 'omtrentlig' && b.lat != null).leng
 document.getElementById('statlinje').textContent = `${BUER.length} buer · ${antKilder} kilder · ${antEksakt} eksakt + ${antOmtr} omtrentlig kartfestet · skrapt 24. juli 2026`;
 render();
 setTimeout(()=>{ kart.invalidateSize(); render(); }, 300); // container-størrelsen kan endre seg rett etter last (fonter/layout)
+if (location.hash.startsWith('#bu/')) visDetalj(decodeURIComponent(location.hash.slice(4)), true);
 </script>
 </body>
 </html>
